@@ -91,6 +91,7 @@
     htop
     git
     inetutils
+    uv
   ];
 
   system.stateVersion = "25.11";
