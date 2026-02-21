@@ -109,6 +109,13 @@
     git
     inetutils
     uv
+    (writeShellScriptBin "deploy-blog" ''
+      set -e
+      cd /root/blog
+      ${git}/bin/git pull
+      systemctl restart blog
+      echo "Blog deployed successfully"
+    '')
   ];
 
   system.stateVersion = "25.11";
