@@ -52,14 +52,25 @@
   security.acme.acceptTerms = true;
   security.acme.defaults.email = "saegl@protonmail.com";
 
+  systemd.services.blog = {
+    description = "Blog FastAPI app";
+    after = ["network.target"];
+    wantedBy = ["multi-user.target"];
+    serviceConfig = {
+      WorkingDirectory = "/root/blog";
+      ExecStart = "${pkgs.uv}/bin/uv run fastapi run --port 8000";
+      Restart = "always";
+      RestartSec = 5;
+    };
+  };
+
   services.nginx = {
     enable = true;
     virtualHosts."saegl.me" = {
       default = true;
       enableACME = true;
       forceSSL = true;
-      locations."/".return = ''200 "malganis is alive\n"'';
-      extraConfig = ''default_type text/plain;'';
+      locations."/".proxyPass = "http://127.0.0.1:8000";
     };
     virtualHosts."frostmourne.saegl.me" = {
       enableACME = true;
@@ -80,6 +91,12 @@
     settings.PasswordAuthentication = false;
     settings.KbdInteractiveAuthentication = false;
   };
+
+  ##############################################################################
+  # NIX-LD (for dynamically linked binaries like uv's Python)
+  ##############################################################################
+
+  programs.nix-ld.enable = true;
 
   ##############################################################################
   # PACKAGES
