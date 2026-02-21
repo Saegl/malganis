@@ -90,6 +90,7 @@
     wget
     htop
     git
+    inetutils
   ];
 
   system.stateVersion = "25.11";
