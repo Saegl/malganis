@@ -64,6 +64,18 @@
     };
   };
 
+  systemd.services.machineplay = {
+    description = "Machineplay FastAPI app";
+    after = ["network.target"];
+    wantedBy = ["multi-user.target"];
+    serviceConfig = {
+      WorkingDirectory = "/root/machineplay";
+      ExecStart = "${pkgs.uv}/bin/uv run fastapi run --port 8888";
+      Restart = "always";
+      RestartSec = 5;
+    };
+  };
+
   services.nginx = {
     enable = true;
     # levels=1:2 - two-level directory hierarchy for cache files
@@ -90,6 +102,11 @@
           add_header X-Cache-Status $upstream_cache_status;
         '';
       };
+    };
+    virtualHosts."machineplay.saegl.me" = {
+      enableACME = true;
+      forceSSL = true;
+      locations."/".proxyPass = "http://127.0.0.1:8888";
     };
     virtualHosts."frostmourne.saegl.me" = {
       enableACME = true;
