@@ -2,6 +2,10 @@
 deploy:
     nixos-rebuild switch --target-host root@saegl.me --flake .#malganis
 
+# Run this if after update some systemd services cannot be restarted
+deploy-boot:
+    nixos-rebuild boot --target-host root@saegl.me --flake .#malganis
+
 # Update flake inputs
 up:
     nix flake update --commit-lock-file --impure \
