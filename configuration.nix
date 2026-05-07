@@ -166,6 +166,9 @@
     git
     inetutils
     uv
+    nodejs_24
+    pnpm_9
+    rsync
     (writeShellScriptBin "deploy-blog" ''
       set -e
       cd /root/blog
@@ -177,12 +180,12 @@
     (writeShellScriptBin "deploy-machineplay" ''
       set -e
       cd /root/machineplay
-      ${git}/bin/git pull
+      git pull
       cd frontend
-      ${pnpm}/bin/pnpm install --frozen-lockfile
-      ${pnpm}/bin/pnpm build
+      pnpm install --frozen-lockfile
+      pnpm build
       mkdir -p /var/www/machineplay
-      ${rsync}/bin/rsync -a --delete dist/ /var/www/machineplay/dist/
+      rsync -a --delete dist/ /var/www/machineplay/dist/
       cd ..
       systemctl restart machineplay
       echo "Machineplay deployed successfully"
