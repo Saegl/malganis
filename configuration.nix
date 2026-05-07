@@ -153,6 +153,15 @@
     settings.KbdInteractiveAuthentication = false;
   };
 
+  services.mongodb = {
+    enable = true;
+    package = pkgs.mongodb-ce;
+    bind_ip = "127.0.0.1";
+  };
+
+  nixpkgs.config.allowUnfreePredicate = pkg:
+    builtins.elem (lib.getName pkg) ["mongodb-ce"];
+
   ##############################################################################
   # NIX-LD (for dynamically linked binaries like uv's Python)
   ##############################################################################
