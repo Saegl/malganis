@@ -103,7 +103,7 @@
         '';
       };
     };
-    virtualHosts."machineplay.saegl.me" = {
+    virtualHosts."api.machineplay.saegl.me" = {
       enableACME = true;
       forceSSL = true;
       locations."/".proxyPass = "http://127.0.0.1:8888";
@@ -152,6 +152,13 @@
       rm -rf /var/cache/nginx/*  # Invalidate nginx cache
       systemctl restart blog
       echo "Blog deployed successfully"
+    '')
+    (writeShellScriptBin "deploy-machineplay" ''
+      set -e
+      cd /root/machineplay
+      ${git}/bin/git pull
+      systemctl restart machineplay
+      echo "Machineplay deployed successfully"
     '')
   ];
 
