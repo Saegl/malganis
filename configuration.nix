@@ -108,6 +108,27 @@
       forceSSL = true;
       locations."/".proxyPass = "http://127.0.0.1:8888";
     };
+    virtualHosts."machineplay.saegl.me" = {
+      enableACME = true;
+      forceSSL = true;
+      root = "/var/www/machineplay/dist";  # see permissions note below
+      locations."/" = {
+        tryFiles = "$uri /index.html";
+      };
+      # Vite hashes filenames (index-Drtt7cGr.js), so assets/ can cache forever
+      locations."/assets/" = {
+        extraConfig = ''
+          expires 1y;
+          add_header Cache-Control "public, immutable";
+        '';
+      };
+      # index.html must NOT be cached, otherwise users get stale shells after deploys
+      locations."= /index.html" = {
+        extraConfig = ''
+          add_header Cache-Control "no-cache";
+        '';
+      };
+    };
     virtualHosts."frostmourne.saegl.me" = {
       enableACME = true;
       forceSSL = true;
@@ -157,6 +178,12 @@
       set -e
       cd /root/machineplay
       ${git}/bin/git pull
+      cd frontend
+      ${pnpm}/bin/pnpm install --frozen-lockfile
+      ${pnpm}/bin/pnpm build
+      mkdir -p /var/www/machineplay
+      ${rsync}/bin/rsync -a --delete dist/ /var/www/machineplay/dist/
+      cd ..
       systemctl restart machineplay
       echo "Machineplay deployed successfully"
     '')
