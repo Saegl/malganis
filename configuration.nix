@@ -68,6 +68,7 @@
     description = "Machineplay FastAPI app";
     after = ["network.target"];
     wantedBy = ["multi-user.target"];
+    path = [pkgs.cutechess pkgs.stockfish];
     serviceConfig = {
       WorkingDirectory = "/root/machineplay";
       ExecStart = "${pkgs.uv}/bin/uv run fastapi run --port 8888";
@@ -106,7 +107,10 @@
     virtualHosts."api.machineplay.saegl.me" = {
       enableACME = true;
       forceSSL = true;
-      locations."/".proxyPass = "http://127.0.0.1:8888";
+      locations."/" = {
+        proxyPass = "http://127.0.0.1:8888";
+        proxyWebsockets = true;
+      };
     };
     virtualHosts."machineplay.saegl.me" = {
       enableACME = true;
@@ -169,6 +173,8 @@
     nodejs_24
     pnpm_9
     rsync
+    cutechess
+    stockfish
     (writeShellScriptBin "deploy-blog" ''
       set -e
       cd /root/blog
