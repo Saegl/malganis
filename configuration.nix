@@ -68,7 +68,7 @@
     description = "Machineplay FastAPI app";
     after = ["network.target"];
     wantedBy = ["multi-user.target"];
-    path = [pkgs.cutechess pkgs.stockfish];
+    path = [pkgs.stockfish];
     serviceConfig = {
       WorkingDirectory = "/root/machineplay";
       ExecStart = "${pkgs.uv}/bin/uv run fastapi run --port 8888";
@@ -182,7 +182,6 @@
     nodejs_24
     pnpm_9
     rsync
-    cutechess
     stockfish
     (writeShellScriptBin "deploy-blog" ''
       set -e
