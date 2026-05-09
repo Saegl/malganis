@@ -153,6 +153,7 @@
     settings.KbdInteractiveAuthentication = false;
   };
 
+  virtualisation.docker.enable = true;
   services.mongodb = {
     enable = true;
     package = pkgs.mongodb-ce;
