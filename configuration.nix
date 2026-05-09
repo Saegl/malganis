@@ -70,8 +70,8 @@
     wantedBy = ["multi-user.target"];
     path = [pkgs.stockfish];
     serviceConfig = {
-      WorkingDirectory = "/root/machineplay";
-      ExecStart = "${pkgs.uv}/bin/uv run fastapi run --port 8888";
+      WorkingDirectory = "/root/machineplay/backend";
+      ExecStart = "${pkgs.uv}/bin/uv run uvicorn main:app --port 8888";
       Restart = "always";
       RestartSec = 5;
     };
