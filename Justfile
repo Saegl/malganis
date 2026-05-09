@@ -7,6 +7,10 @@ deploy:
 deploy-boot:
     nixos-rebuild boot --target-host root@saegl.me --flake .#malganis
 
+# Connect with ssh
+ssh:
+    ssh root@saegl.me
+
 # Clean old generations and garbage collect on VPS
 clean:
     ssh root@saegl.me 'nix-collect-garbage -d'
