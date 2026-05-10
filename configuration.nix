@@ -104,7 +104,7 @@
         '';
       };
     };
-    virtualHosts."api.machineplay.saegl.me" = {
+    virtualHosts."api.machineplay.org" = {
       enableACME = true;
       forceSSL = true;
       locations."/" = {
@@ -112,7 +112,7 @@
         proxyWebsockets = true;
       };
     };
-    virtualHosts."machineplay.saegl.me" = {
+    virtualHosts."machineplay.org" = {
       enableACME = true;
       forceSSL = true;
       root = "/var/www/machineplay/dist";  # see permissions note below
