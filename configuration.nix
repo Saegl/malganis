@@ -71,7 +71,7 @@
     path = [pkgs.stockfish];
     serviceConfig = {
       WorkingDirectory = "/root/machineplay/backend";
-      ExecStart = "${pkgs.uv}/bin/uv run uvicorn app:app --port 8888 --timeout-graceful-shutdown 5";
+      ExecStart = "${pkgs.uv}/bin/uv run uvicorn app:app --port 8888 --timeout-graceful-shutdown 0";
       Restart = "always";
       RestartSec = 5;
     };
