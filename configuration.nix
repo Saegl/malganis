@@ -77,6 +77,21 @@
     };
   };
 
+  systemd.services.machineplay-runner = {
+    description = "Machineplay runner (plays games via WS to local backend)";
+    after = ["network.target" "machineplay.service"];
+    wants = ["machineplay.service"];
+    wantedBy = ["multi-user.target"];
+    path = [pkgs.stockfish];
+    environment.BACKEND_URL = "ws://127.0.0.1:8888/ws";
+    serviceConfig = {
+      WorkingDirectory = "/root/machineplay/machineplay";
+      ExecStart = "${pkgs.uv}/bin/uv run machineplay";
+      Restart = "always";
+      RestartSec = 5;
+    };
+  };
+
   services.nginx = {
     enable = true;
     # levels=1:2 - two-level directory hierarchy for cache files
@@ -211,6 +226,7 @@
       rsync -a --delete dist/ /var/www/machineplay/dist/
       cd ..
       systemctl restart machineplay
+      systemctl restart machineplay-runner
       echo "Machineplay deployed successfully"
     '')
   ];
