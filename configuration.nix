@@ -71,7 +71,7 @@
     path = [pkgs.stockfish];
     serviceConfig = {
       WorkingDirectory = "/root/machineplay/backend";
-      ExecStart = "${pkgs.uv}/bin/uv run uvicorn app:app --port 8888 --timeout-graceful-shutdown 0";
+      ExecStart = "${pkgs.uv}/bin/uv run uvicorn app.main:app --port 8888 --timeout-graceful-shutdown 0";
       Restart = "always";
       RestartSec = 5;
     };
@@ -206,7 +206,6 @@
     nodejs_24
     pnpm_9
     rsync
-    stockfish
     (writeShellScriptBin "deploy-blog" ''
       set -e
       cd /root/blog
@@ -215,6 +214,9 @@
       systemctl restart blog
       echo "Blog deployed successfully"
     '')
+    # Machineplay stuff
+    fastchess
+    stockfish
     (writeShellScriptBin "deploy-machineplay" ''
       set -e
       cd /root/machineplay
