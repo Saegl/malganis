@@ -82,7 +82,7 @@
     after = ["network.target" "machineplay.service"];
     wants = ["machineplay.service"];
     wantedBy = ["multi-user.target"];
-    path = [pkgs.stockfish];
+    path = [pkgs.fastchess pkgs.stockfish];
     environment.BACKEND_URL = "ws://127.0.0.1:8888/ws";
     serviceConfig = {
       WorkingDirectory = "/root/machineplay/machineplay";
