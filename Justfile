@@ -7,6 +7,13 @@ deploy:
 deploy-boot:
     nixos-rebuild boot --target-host root@saegl.me --flake .#malganis
 
+# Push machineplay backend secrets to the VPS and restart the backend.
+# Reads secrets/backend.env (gitignored, KEY=VALUE per line).
+push-secrets:
+    ssh root@saegl.me 'mkdir -p /etc/machineplay && chmod 700 /etc/machineplay'
+    scp secrets/backend.env root@saegl.me:/etc/machineplay/backend.env
+    ssh root@saegl.me 'chmod 600 /etc/machineplay/backend.env && systemctl restart machineplay'
+
 # Connect with ssh
 ssh:
     ssh root@saegl.me

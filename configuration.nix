@@ -3,7 +3,10 @@
   lib,
   ...
 }: {
-  imports = [./hardware-configuration.nix];
+  imports = [
+    ./hardware-configuration.nix
+    ./machineplay.nix
+  ];
 
   ##############################################################################
   # BOOT
@@ -64,34 +67,6 @@
     };
   };
 
-  systemd.services.machineplay = {
-    description = "Machineplay FastAPI app";
-    after = ["network.target"];
-    wantedBy = ["multi-user.target"];
-    path = [pkgs.stockfish];
-    serviceConfig = {
-      WorkingDirectory = "/root/machineplay/backend";
-      ExecStart = "${pkgs.uv}/bin/uv run uvicorn app.main:app --port 8888 --timeout-graceful-shutdown 0";
-      Restart = "always";
-      RestartSec = 5;
-    };
-  };
-
-  systemd.services.machineplay-runner = {
-    description = "Machineplay runner (plays games via WS to local backend)";
-    after = ["network.target" "machineplay.service"];
-    wants = ["machineplay.service"];
-    wantedBy = ["multi-user.target"];
-    path = [pkgs.fastchess pkgs.stockfish];
-    environment.BACKEND_URL = "ws://127.0.0.1:8888/ws";
-    serviceConfig = {
-      WorkingDirectory = "/root/machineplay/machineplay";
-      ExecStart = "${pkgs.uv}/bin/uv run machineplay";
-      Restart = "always";
-      RestartSec = 5;
-    };
-  };
-
   services.nginx = {
     enable = true;
     # levels=1:2 - two-level directory hierarchy for cache files
@@ -116,35 +91,6 @@
           proxy_cache_valid 200 10m;
           proxy_cache_use_stale error timeout updating;
           add_header X-Cache-Status $upstream_cache_status;
-        '';
-      };
-    };
-    virtualHosts."api.machineplay.org" = {
-      enableACME = true;
-      forceSSL = true;
-      locations."/" = {
-        proxyPass = "http://127.0.0.1:8888";
-        proxyWebsockets = true;
-      };
-    };
-    virtualHosts."machineplay.org" = {
-      enableACME = true;
-      forceSSL = true;
-      root = "/var/www/machineplay/dist";  # see permissions note below
-      locations."/" = {
-        tryFiles = "$uri /index.html";
-      };
-      # Vite hashes filenames (index-Drtt7cGr.js), so assets/ can cache forever
-      locations."/assets/" = {
-        extraConfig = ''
-          expires 1y;
-          add_header Cache-Control "public, immutable";
-        '';
-      };
-      # index.html must NOT be cached, otherwise users get stale shells after deploys
-      locations."= /index.html" = {
-        extraConfig = ''
-          add_header Cache-Control "no-cache";
         '';
       };
     };
@@ -213,23 +159,6 @@
       rm -rf /var/cache/nginx/*  # Invalidate nginx cache
       systemctl restart blog
       echo "Blog deployed successfully"
-    '')
-    # Machineplay stuff
-    fastchess
-    stockfish
-    (writeShellScriptBin "deploy-machineplay" ''
-      set -e
-      cd /root/machineplay
-      git pull
-      cd frontend
-      pnpm install --frozen-lockfile
-      pnpm build
-      mkdir -p /var/www/machineplay
-      rsync -a --delete dist/ /var/www/machineplay/dist/
-      cd ..
-      systemctl restart machineplay
-      systemctl restart machineplay-runner
-      echo "Machineplay deployed successfully"
     '')
   ];
 
