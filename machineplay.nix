@@ -1,5 +1,11 @@
 # All machineplay-related configuration: backend + runner services, nginx
-# virtual hosts, packages and the deploy script.
+# virtual hosts, packages and the per-component deploy scripts.
+#
+# The three components now live in independent repos, each cloned at /root on
+# the VPS and deployed individually from its own Justfile (`just deploy`):
+#   /root/backend     <- github.com/MachinePlay/backend     (FastAPI app)
+#   /root/frontend    <- github.com/MachinePlay/frontend    (Vite static site)
+#   /root/machineplay <- github.com/MachinePlay/machineplay (CLI / runner)
 #
 # Backend environment variables (secrets) are NOT stored in the nix store.
 # They live in /etc/machineplay/backend.env on the VPS and are pushed there
@@ -15,7 +21,7 @@
     wantedBy = ["multi-user.target"];
     path = [pkgs.stockfish];
     serviceConfig = {
-      WorkingDirectory = "/root/machineplay/backend";
+      WorkingDirectory = "/root/backend";
       # Leading "-" makes the file optional: the service still starts before
       # any secrets have been pushed. Push them with `just push-secrets`.
       EnvironmentFile = "-/etc/machineplay/backend.env";
@@ -33,7 +39,7 @@
     path = [pkgs.fastchess pkgs.stockfish];
     environment.BACKEND_URL = "ws://127.0.0.1:8888/ws";
     serviceConfig = {
-      WorkingDirectory = "/root/machineplay/machineplay";
+      WorkingDirectory = "/root/machineplay";
       ExecStart = "${pkgs.uv}/bin/uv run machineplay";
       Restart = "always";
       RestartSec = 5;
@@ -83,25 +89,43 @@
   };
 
   ##############################################################################
-  # PACKAGES & DEPLOY SCRIPT
+  # PACKAGES & DEPLOY SCRIPTS
   ##############################################################################
 
+  # One script per component. Each repo's Justfile sshes in and runs the
+  # matching one (`just deploy`); it git-pulls the already-cloned repo and
+  # rebuilds/restarts only that component. `deploy-machineplay` does all three.
   environment.systemPackages = with pkgs; [
     fastchess
     stockfish
-    (writeShellScriptBin "deploy-machineplay" ''
+
+    (writeShellScriptBin "deploy-machineplay-backend" ''
       set -e
-      cd /root/machineplay
+      cd /root/backend
       git pull
-      cd frontend
+      # `uv run` (the service's ExecStart) syncs deps from the lockfile on start.
+      systemctl restart machineplay
+      echo "Backend deployed successfully"
+    '')
+
+    (writeShellScriptBin "deploy-machineplay-frontend" ''
+      set -e
+      cd /root/frontend
+      git pull
       pnpm install --frozen-lockfile
       pnpm build
       mkdir -p /var/www/machineplay
       rsync -a --delete dist/ /var/www/machineplay/dist/
-      cd ..
-      systemctl restart machineplay
+      echo "Frontend deployed successfully"
+    '')
+
+    (writeShellScriptBin "deploy-machineplay-cli" ''
+      set -e
+      cd /root/machineplay
+      git pull
+      # The runner auto-reconnects, so it's safe to restart independently.
       systemctl restart machineplay-runner
-      echo "Machineplay deployed successfully"
+      echo "Runner (cli) deployed successfully"
     '')
   ];
 }
