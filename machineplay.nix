@@ -10,10 +10,61 @@
 # Backend environment variables (secrets) are NOT stored in the nix store.
 # They live in /etc/machineplay/backend.env on the VPS and are pushed there
 # out-of-band with `just push-secrets` (see ./secrets and the Justfile).
-{pkgs, ...}: {
+{pkgs, ...}: let
+  # Public cert matching the registry-auth RSA private key that is pushed to
+  # /etc/machineplay/registry-auth.key (see the Justfile `push-secrets` target).
+  # The backend signs Docker registry tokens with the private key; the registry
+  # validates them against this cert (its `auth.token.rootcertbundle`). It lives
+  # in the nix store because the docker-registry user can't read the 0700
+  # /etc/machineplay dir, and because flakes ignore untracked (gitignored)
+  # files. Safe to commit — it is public. Regenerate both together when rotating:
+  #   openssl req -newkey rsa:2048 -nodes -keyout registry-auth.key \
+  #     -x509 -days 3650 -out registry-auth.crt -subj "/CN=machineplay-registry-auth"
+  registryAuthCert = pkgs.writeText "registry-auth.crt" ''
+    -----BEGIN CERTIFICATE-----
+    MIIDKTCCAhGgAwIBAgIULwbgrKndXKBpSpQBEDKdMFzf70MwDQYJKoZIhvcNAQEL
+    BQAwJDEiMCAGA1UEAwwZbWFjaGluZXBsYXktcmVnaXN0cnktYXV0aDAeFw0yNjA2
+    MDgxODM5MzdaFw0zNjA2MDUxODM5MzdaMCQxIjAgBgNVBAMMGW1hY2hpbmVwbGF5
+    LXJlZ2lzdHJ5LWF1dGgwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQCk
+    wjs/XRbhnYdxmZn662/vLLEfszRgqVyYrClbM+5H8tUiWgSMExZo/22lLO/8yFhK
+    FVhN9Ll8/yLAK9oljUuPcFCxmbgb05SSeh9ZnvJ2NHV/BRlBNR6B8Gnv56pJmn7q
+    DGgfH9uokGlv93c8ZA5lJvrYpdCgWEiRXUzkGsIPQzpUxVcKgkMNnEfS6fzfHOIN
+    i8jdgrIXaZtZbU53RebIoybWMB7q3Ytaib0Aj7lT5vjbIN29868gUPcCM4JI30HW
+    0fsYHiI4gu0E2jJyqA7GyH01CYa28iHYfCQGuSFsVo0bm9i6XDO47XNB2W6HF/xe
+    Lt2qoMdkA/A/HKctfN99AgMBAAGjUzBRMB0GA1UdDgQWBBSIHlINeworG3A2ctV+
+    kZZgwZ2VYzAfBgNVHSMEGDAWgBSIHlINeworG3A2ctV+kZZgwZ2VYzAPBgNVHRMB
+    Af8EBTADAQH/MA0GCSqGSIb3DQEBCwUAA4IBAQAeyA+GfC530kUQsvv+SuyBoF+a
+    qTuxYY2Xxg6UZuvAELh4A1w4Vyg6jTbHZnrPvZUWLSi5+ronN4RJUIRI4CXY6zh8
+    HnAyjNFFgtxYXjHE6EGOeM2R1IWUd7PQVH0mvxV4eV12knUlwW5k4sSpUcd/Zu3X
+    ZtlBqPSurvO35KNjx6UKGBvTF9mviwYSAlvz3UpmmTgNQux3E/oSTqIavSHrwx5I
+    N+MY8KxEczuktxJAmzI/DeryqccpWThwqiHRj1RaviGr4uZ1zssdySXE1lzOL8jJ
+    yt0lF8u5CmD0ZKH5x8qrxx5oC9+M/kDqSoLwG8Bwl28mpG0TrzSo8J/m2Lnw
+    -----END CERTIFICATE-----
+  '';
+in {
   ##############################################################################
   # SERVICES
   ##############################################################################
+
+  # Docker registry engines are pushed to. It listens only on localhost; nginx
+  # (registry.machineplay.org) terminates TLS in front of it. Pulls are public;
+  # pushes require a token minted by the backend's /registry/token endpoint,
+  # which the registry validates against registryAuthCert. The runner can pull
+  # straight from 127.0.0.1:5000 (docker treats localhost as insecure-ok), so it
+  # needs no credentials.
+  services.dockerRegistry = {
+    enable = true;
+    listenAddress = "127.0.0.1";
+    port = 5000;
+    # Allow `DELETE`s so engine deletion can drop images later (M6 follow-up).
+    enableDelete = true;
+    extraConfig.auth.token = {
+      realm = "https://api.machineplay.org/registry/token";
+      service = "registry.machineplay.org";
+      issuer = "machineplay-auth";
+      rootcertbundle = "${registryAuthCert}";
+    };
+  };
 
   systemd.services.machineplay = {
     description = "Machineplay FastAPI app";
@@ -63,6 +114,30 @@
     locations."/" = {
       proxyPass = "http://127.0.0.1:8888";
       proxyWebsockets = true;
+    };
+  };
+
+  # Public TLS front for the docker registry. Image blobs are large and
+  # streamed, so disable the body-size cap and request buffering. The registry
+  # builds blob-upload Location URLs from the forwarded Host/proto, so pass them
+  # through. DNS: add an A/AAAA record for registry.machineplay.org → this VPS.
+  services.nginx.virtualHosts."registry.machineplay.org" = {
+    enableACME = true;
+    forceSSL = true;
+    extraConfig = ''
+      client_max_body_size 0;
+      chunked_transfer_encoding on;
+    '';
+    locations."/" = {
+      proxyPass = "http://127.0.0.1:5000";
+      extraConfig = ''
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_request_buffering off;
+        proxy_read_timeout 900s;
+      '';
     };
   };
 
