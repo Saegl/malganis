@@ -15,7 +15,8 @@ push-secrets:
     ssh root@saegl.me 'mkdir -p /etc/machineplay && chmod 700 /etc/machineplay'
     scp secrets/backend.env root@saegl.me:/etc/machineplay/backend.env
     scp secrets/registry-auth.key root@saegl.me:/etc/machineplay/registry-auth.key
-    ssh root@saegl.me 'chmod 600 /etc/machineplay/backend.env /etc/machineplay/registry-auth.key && systemctl restart machineplay'
+    scp secrets/registry-auth.crt root@saegl.me:/etc/machineplay/registry-auth.crt
+    ssh root@saegl.me 'chmod 600 /etc/machineplay/backend.env /etc/machineplay/registry-auth.key && chmod 644 /etc/machineplay/registry-auth.crt && systemctl restart machineplay'
 
 # Connect with ssh
 ssh:

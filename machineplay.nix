@@ -104,13 +104,6 @@ in {
   services.nginx.virtualHosts."api.machineplay.org" = {
     enableACME = true;
     forceSSL = true;
-    # Engine uploads are `docker save` tarballs (~hundreds of MB). nginx's
-    # default client_max_body_size is 1M, which 413s them before they reach the
-    # backend. Set generous headroom; the backend's MAX_UPLOAD_BYTES (200M
-    # default) is the effective cap and returns a clean JSON error.
-    extraConfig = ''
-      client_max_body_size 512m;
-    '';
     locations."/" = {
       proxyPass = "http://127.0.0.1:8888";
       proxyWebsockets = true;
