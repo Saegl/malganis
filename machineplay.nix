@@ -87,8 +87,16 @@ in {
     after = ["network.target" "machineplay.service"];
     wants = ["machineplay.service"];
     wantedBy = ["multi-user.target"];
-    path = [pkgs.fastchess pkgs.stockfish];
-    environment.BACKEND_URL = "ws://127.0.0.1:8888/ws";
+    # docker: the runner pulls engine images and plays them via `docker run`.
+    path = [pkgs.fastchess pkgs.stockfish pkgs.docker];
+    environment = {
+      BACKEND_URL = "ws://127.0.0.1:8888/ws";
+      # Co-located with the registry: pull straight from it, skipping nginx/TLS.
+      MACHINEPLAY_REGISTRY = "127.0.0.1:5000";
+      # The runner logs via print(); without this, stdout is block-buffered
+      # under systemd and nothing reaches the journal.
+      PYTHONUNBUFFERED = "1";
+    };
     serviceConfig = {
       WorkingDirectory = "/root/machineplay";
       ExecStart = "${pkgs.uv}/bin/uv run machineplay";
@@ -169,6 +177,10 @@ in {
 
     (writeShellScriptBin "deploy-machineplay-backend" ''
       set -e
+      # The backend editable-installs ../machineplay (shared schemas), so the
+      # two checkouts must move together — a stale sibling breaks /game.
+      cd /root/machineplay
+      git pull
       cd /root/backend
       git pull
       # `uv run` (the service's ExecStart) syncs deps from the lockfile on start.
@@ -193,6 +205,9 @@ in {
       git pull
       # The runner auto-reconnects, so it's safe to restart independently.
       systemctl restart machineplay-runner
+      # The backend imports machineplay.schemas (editable install), so it must
+      # reload too or the two sides disagree on the wire schema.
+      systemctl restart machineplay
       echo "Runner (cli) deployed successfully"
     '')
   ];
