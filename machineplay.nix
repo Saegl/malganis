@@ -70,7 +70,6 @@ in {
     description = "Machineplay FastAPI app";
     after = ["network.target"];
     wantedBy = ["multi-user.target"];
-    path = [pkgs.stockfish];
     serviceConfig = {
       WorkingDirectory = "/root/backend";
       # Leading "-" makes the file optional: the service still starts before
@@ -88,7 +87,7 @@ in {
     wants = ["machineplay.service"];
     wantedBy = ["multi-user.target"];
     # docker: the runner pulls engine images and plays them via `docker run`.
-    path = [pkgs.fastchess pkgs.stockfish pkgs.docker];
+    path = [pkgs.fastchess pkgs.docker];
     environment = {
       BACKEND_URL = "ws://127.0.0.1:8888/ws";
       # Co-located with the registry: pull straight from it, skipping nginx/TLS.
@@ -173,7 +172,6 @@ in {
   # rebuilds/restarts only that component. `deploy-machineplay` does all three.
   environment.systemPackages = with pkgs; [
     fastchess
-    stockfish
 
     (writeShellScriptBin "deploy-machineplay-backend" ''
       set -e
