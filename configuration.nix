@@ -116,6 +116,7 @@
     nodejs_24
     pnpm_9
     rsync
+    mongodb-tools # mongodump/mongorestore for `just backup` (server pkg omits them)
   ];
 
   system.stateVersion = "25.11";
