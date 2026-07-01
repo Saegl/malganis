@@ -98,6 +98,14 @@ in {
     };
     serviceConfig = {
       WorkingDirectory = "/root/machineplay";
+      # The runner authenticates to the backend WS with an mp_ token and keeps a
+      # stable identity across restarts. Both come from this secrets file
+      # (pushed out-of-band by `just push-secrets`, see ./secrets/runner.env):
+      #   MP_TOKEN=mp_…          # owner's API token; sets the runner's owner
+      #   RUNNER_ID=<uuid>       # pins the runner's durable id declaratively
+      # Leading "-" keeps the unit startable before the secret is pushed; without
+      # a token the runner exits(1) and systemd retries until it lands.
+      EnvironmentFile = "-/etc/machineplay/runner.env";
       ExecStart = "${pkgs.uv}/bin/uv run machineplay runner";
       Restart = "always";
       RestartSec = 5;
