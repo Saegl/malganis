@@ -98,7 +98,7 @@ in {
     };
     serviceConfig = {
       WorkingDirectory = "/root/machineplay";
-      ExecStart = "${pkgs.uv}/bin/uv run machineplay";
+      ExecStart = "${pkgs.uv}/bin/uv run machineplay runner";
       Restart = "always";
       RestartSec = 5;
     };
