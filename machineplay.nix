@@ -56,8 +56,16 @@ in {
     enable = true;
     listenAddress = "127.0.0.1";
     port = 5000;
-    # Allow `DELETE`s so engine deletion can drop images later (M6 follow-up).
+    # Allow `DELETE`s: the backend removes an engine's manifests when the
+    # engine is deleted (DELETE /user/{login}/{engine}).
     enableDelete = true;
+    # Manifest deletes only unlink; blobs are shared, content-addressed, and
+    # reclaimed by this timer (`registry garbage-collect` + registry restart,
+    # weekly = Mon 00:00). GC runs against the live registry, so in theory a
+    # push racing it could lose a just-uploaded blob — fine at our scale, and
+    # a re-push heals it.
+    enableGarbageCollect = true;
+    garbageCollectDates = "weekly";
     extraConfig.auth.token = {
       realm = "https://api.machineplay.org/registry/token";
       service = "registry.machineplay.org";
@@ -70,6 +78,12 @@ in {
     description = "Machineplay FastAPI app";
     after = ["network.target"];
     wantedBy = ["multi-user.target"];
+    environment = {
+      # Co-located with the registry: the backend deletes engine image
+      # manifests straight over localhost (auth still applies; it mints its
+      # own delete-scoped token).
+      REGISTRY_API_URL = "http://127.0.0.1:5000";
+    };
     serviceConfig = {
       WorkingDirectory = "/root/backend";
       # Leading "-" makes the file optional: the service still starts before
