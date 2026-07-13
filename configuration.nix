@@ -7,6 +7,7 @@
     ./hardware-configuration.nix
     ./blog.nix
     ./machineplay.nix
+    ./beszel.nix
   ];
 
   ##############################################################################
