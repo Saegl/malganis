@@ -99,6 +99,7 @@
   # SHELL
   ##############################################################################
 
+  environment.localBinInPath = true;
   environment.shellAliases = {
     q = "exit";
   };
@@ -115,7 +116,7 @@
     inetutils
     uv
     nodejs_24
-    pnpm_9
+    pnpm_10
     rsync
     mongodb-tools # mongodump/mongorestore for `just backup` (server pkg omits them)
   ];
