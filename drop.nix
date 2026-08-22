@@ -25,7 +25,7 @@ in {
       # uv resolves its cache and toolchains out of HOME; systemd would
       # otherwise hand the unit a bare environment.
       HOME = home;
-      DROP_DIR = "/var/lib/drop";
+      DROP_DIR = "/home/saegl/trash";
       DROP_MAX_MB = toString maxMB;
       # nginx is the only thing that should reach it; it terminates TLS.
       DROP_HOST = "127.0.0.1";
