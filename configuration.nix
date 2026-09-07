@@ -87,6 +87,22 @@
 
   services.nginx = {
     enable = true;
+
+    # Without this every byte of text leaves the box uncompressed: the
+    # machineplay frontend is 462K of JS/CSS (139K gzipped) and the API's /game
+    # is a 141K JSON that gzips to 30K. On a healthy link that is a rounding
+    # error, but each extra packet is another chance to stall on a retransmit -
+    # measured over a 14%-loss path, /game went from 6.9-18.9s to 1.5-3.0s.
+    #
+    # gzip_proxied in the preset gates on the *request's* Via header, not on
+    # nginx's own proxy_pass, so browser traffic to api.machineplay.org is
+    # compressed even though the backend sends no Cache-Control.
+    #
+    # Nothing needs excluding by hand: registry blobs (application/octet-stream)
+    # and the /stream/* SSE endpoints (text/event-stream) are both absent from
+    # the preset's type list, so they go out untouched.
+    recommendedGzipSettings = true;
+
     virtualHosts."frostmourne.saegl.me" = {
       enableACME = true;
       forceSSL = true;
