@@ -9,7 +9,10 @@
     ./machineplay.nix
     ./beszel.nix
     ./drop.nix
-    ./t3.nix
+    # Disabled: the t3 server was the largest consumer on this 1G box - 164M
+    # resident plus 241M swapped, against a 707M peak. Re-enable by
+    # uncommenting, but expect it to need a bigger machine.
+    # ./t3.nix
   ];
 
   ##############################################################################
@@ -44,6 +47,14 @@
 
   nix.settings.experimental-features = ["nix-command" "flakes"];
 
+  # Both default to true, and each pins the whole nixpkgs source tree into the
+  # system closure - 479M, the single largest thing on this 23G disk, and 479M
+  # re-copied over ssh on every nixpkgs bump. All they buy is bare `nixpkgs`
+  # resolving to the deployed rev in `nix run nixpkgs#foo` and `<nixpkgs>`,
+  # which nothing here uses; the flake does its own pinning via flake.lock.
+  nixpkgs.flake.setFlakeRegistry = false;
+  nixpkgs.flake.setNixPath = false;
+
   ##############################################################################
   # USERS
   ##############################################################################
@@ -68,6 +79,11 @@
 
   security.acme.acceptTerms = true;
   security.acme.defaults.email = "saegl@protonmail.com";
+
+  # Uncapped, the journal had grown to 2.2G - a tenth of this 23G disk - and
+  # journald's own RSS along with it. 200M keeps enough history to debug a bad
+  # deploy without the file set being a top-five consumer.
+  services.journald.extraConfig = "SystemMaxUse=200M";
 
   services.nginx = {
     enable = true;

@@ -53,6 +53,51 @@ clean:
 space:
     ssh root@saegl.me 'df -h /'
 
+# Where the frostmourne NixOS config lives, as seen from this repo.
+frostmourne := "../nixos"
+
+# Resolves the input through the lock's root node rather than reading
+# `.nodes.nixpkgs` directly: once a flake has inputs of its own (frostmourne has
+# noctalia and helium), the nixpkgs the config actually uses gets a suffixed
+# name like `nixpkgs_2`, while the bare `nixpkgs` node is some dependency's own
+# copy - 8 months stale, in frostmourne's case.
+#
+# Only `locked` is touched; `original` stays `nixos-unstable`, so `just up` goes
+# on following the channel.
+#
+# Match nixpkgs to frostmourne's so a deploy builds from this machine's store
+sync-frostmourne:
+    #!/usr/bin/env python3
+    import json, pathlib, sys
+
+    def nixpkgs_node(path):
+        lock = json.loads(path.read_text())
+        nodes = lock["nodes"]
+        name = nodes[lock["root"]]["inputs"]["nixpkgs"]
+        # An input can be re-exported as ["parent", "input"] rather than a name.
+        if not isinstance(name, str):
+            sys.exit(f"{path}: nixpkgs is a follows chain ({name}), not a node")
+        return lock, nodes[name]
+
+    src = pathlib.Path("{{frostmourne}}") / "flake.lock"
+    if not src.is_file():
+        sys.exit(f"no flake.lock at {src} - set `frostmourne` to the config's path")
+
+    _, theirs = nixpkgs_node(src)
+    lock, ours = nixpkgs_node(pathlib.Path("flake.lock"))
+
+    before, after = ours["locked"]["rev"], theirs["locked"]["rev"]
+    if before == after:
+        print(f"already in sync: {after}")
+        raise SystemExit(0)
+
+    ours["locked"] = theirs["locked"]
+    # Nix writes its locks sorted, two-space indented, newline-terminated.
+    pathlib.Path("flake.lock").write_text(
+        json.dumps(lock, indent=2, sort_keys=True) + "\n"
+    )
+    print(f"nixpkgs {before[:12]} -> {after[:12]}")
+
 # Update flake inputs
 up:
     nix flake update --commit-lock-file --impure \
