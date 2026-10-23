@@ -1,28 +1,45 @@
-# Datasets for rented GPU boxes (lab's experiments): a read-only rsync mirror.
+# Rented GPU boxes (lab's experiments): datasets in, results out, over rsync.
 #
-# saegl pushes over their own ssh login:
+# Each direction has its own user and a key made only for boxes, copied onto
+# machines we don't own. Each key's one entry is forced to rrsync inside its
+# directory, so a leaked copy can do that one thing: no shell, no forwarding.
+#
+# Datasets, read-only. saegl pushes over their own login:
 #   rsync -a data/chess/cclr saegl@saegl.me:/srv/datasets/chess/
-# Boxes pull as the `datasets` user with a key made only for them, which is
-# copied onto machines we don't own. Its one entry below is forced to rrsync,
-# read-only and inside /srv/datasets, so a leaked copy can read datasets and do
-# nothing else: no shell, no writes, no forwarding.
+# and boxes pull:
 #   rsync -a -e 'ssh -i ~/.ssh/lab_datasets_ed25519' datasets@saegl.me:chess/cclr data/chess/
+#
+# Results, write-only: a box can add and update files under /srv/results but
+# not read them back or delete any, and symlinks it sends are munged. saegl
+# pulls them over their own login.
+#   rsync -a -e 'ssh -i ~/.ssh/lab_results_ed25519' data/logs/exp/ results@saegl.me:exp/logs/
 {pkgs, ...}: let
-  dir = "/srv/datasets";
-  # Private half: ~/.ssh/lab_datasets_ed25519 on frostmourne
-  boxKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHB8tKDiPeV8Xh/ncm8B4RQPP5kbHMaqVyO4Um0uKmmk lab-datasets-readonly";
-in {
-  systemd.tmpfiles.rules = ["d ${dir} 0755 saegl users -"];
+  datasets = "/srv/datasets";
+  results = "/srv/results";
+  # Private halves: ~/.ssh/lab_datasets_ed25519 and lab_results_ed25519 on frostmourne
+  datasetsKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHB8tKDiPeV8Xh/ncm8B4RQPP5kbHMaqVyO4Um0uKmmk lab-datasets-readonly";
+  resultsKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIC359Y7Swa5lfr3McJzAtL+1fzmHIJHazghwLv0Hc6Wt lab-results-writeonly";
 
-  users.groups.datasets = {};
-  users.users.datasets = {
-    isSystemUser = true;
-    group = "datasets";
-    # sshd runs even a forced command through the login shell, so nologin
-    # would refuse every pull.
-    useDefaultShell = true;
-    openssh.authorizedKeys.keys = [
-      ''restrict,command="${pkgs.rrsync}/bin/rrsync -ro ${dir}" ${boxKey}''
-    ];
+  # sshd runs even a forced command through the login shell, so nologin would
+  # refuse every transfer.
+  boxUser = name: dir: flags: key: {
+    groups.${name} = {};
+    users.${name} = {
+      isSystemUser = true;
+      group = name;
+      useDefaultShell = true;
+      openssh.authorizedKeys.keys = [
+        ''restrict,command="${pkgs.rrsync}/bin/rrsync ${flags} ${dir}" ${key}''
+      ];
+    };
   };
+  d = boxUser "datasets" datasets "-ro" datasetsKey;
+  r = boxUser "results" results "-wo -no-del -munge" resultsKey;
+in {
+  systemd.tmpfiles.rules = [
+    "d ${datasets} 0755 saegl users -"
+    "d ${results} 0755 results results -"
+  ];
+  users.groups = d.groups // r.groups;
+  users.users = d.users // r.users;
 }
