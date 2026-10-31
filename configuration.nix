@@ -10,6 +10,7 @@
     ./beszel.nix
     ./drop.nix
     ./datasets.nix
+    ./daily.nix
     # Disabled: the t3 server was the largest consumer on this 1G box - 164M
     # resident plus 241M swapped, against a 707M peak. Re-enable by
     # uncommenting, but expect it to need a bigger machine.
