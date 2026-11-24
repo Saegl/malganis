@@ -135,6 +135,8 @@
     enable = true;
     package = pkgs.mongodb-ce;
     bind_ip = "127.0.0.1";
+    # Diagnostics for MongoDB support; the default cap let it reach 500M.
+    extraConfig = "setParameter: {diagnosticDataCollectionDirectorySizeMB: 50}";
   };
 
   nixpkgs.config.allowUnfreePredicate = pkg:
