@@ -7,6 +7,7 @@
     ./hardware-configuration.nix
     ./blog.nix
     ./machineplay.nix
+    ./goatcounter.nix
     ./beszel.nix
     ./drop.nix
     ./datasets.nix
