@@ -1,23 +1,17 @@
 # Deploy malganis (Linode VPS)
 deploy:
-    # nixos-rebuild switch --target-host root@saegl.me --flake .#malganis
     nh os switch --hostname malganis --target-host root@saegl.me --elevation-strategy none .
 
-# Run this if after update some systemd services cannot be restarted
+# For when an update leaves systemd services unable to restart.
 deploy-boot:
     nixos-rebuild boot --target-host root@saegl.me --flake .#malganis
 
-# Push every secret to the VPS. Run this BEFORE the first `just deploy` on a
-# fresh machine: beszel-hub loads its SSH key as a systemd credential, which is
-# mandatory, so the unit will not start until the key is in place.
+# Push every secret. On a fresh machine run it BEFORE the first deploy: beszel-hub
+# won't start without its SSH key.
 push-secrets: push-machineplay-secrets push-beszel-secrets
 
-# Push machineplay secrets to the VPS and restart the affected services.
-# Reads (all gitignored):
-#   secrets/backend.env        backend config, KEY=VALUE per line
-#   secrets/runner.env         runner MP_TOKEN + RUNNER_ID (see machineplay.nix)
-#   secrets/registry-auth.key  registry token-signing private key
-# The matching public cert is embedded in machineplay.nix (registryAuthCert).
+# Push gitignored secrets/{backend.env,runner.env,registry-auth.key,.crt} and
+# restart. The cert is also embedded in machineplay.nix.
 push-machineplay-secrets:
     ssh root@saegl.me 'mkdir -p /etc/machineplay && chmod 700 /etc/machineplay'
     scp secrets/backend.env root@saegl.me:/etc/machineplay/backend.env
@@ -26,19 +20,13 @@ push-machineplay-secrets:
     scp secrets/registry-auth.crt root@saegl.me:/etc/machineplay/registry-auth.crt
     ssh root@saegl.me 'chmod 600 /etc/machineplay/backend.env /etc/machineplay/runner.env /etc/machineplay/registry-auth.key && chmod 644 /etc/machineplay/registry-auth.crt && systemctl restart machineplay machineplay-runner'
 
-# Push beszel secrets to the VPS and restart the hub.
-# Reads (both gitignored):
-#   secrets/beszel.env       USER_EMAIL + USER_PASSWORD, used once to create the
-#                            admin account on the hub's very first boot
-#   secrets/beszel-hub.key   the hub's SSH private key, seeded into its data dir
-#                            so the identity survives a rebuild
-# The matching public key is embedded in beszel.nix (hubPublicKey).
+# Push gitignored secrets/beszel.env (admin account, first boot only) and
+# beszel-hub.key (public half in beszel.nix), then restart the hub.
 push-beszel-secrets:
     ssh root@saegl.me 'mkdir -p /etc/beszel && chmod 700 /etc/beszel'
     scp secrets/beszel.env root@saegl.me:/etc/beszel/hub.env
     scp secrets/beszel-hub.key root@saegl.me:/etc/beszel/hub.key
-    # `|| true`: on a first-time deploy the unit does not exist yet, since the
-    # secrets have to land before the nix config that consumes them.
+    # `|| true`: on a fresh machine the unit doesn't exist yet.
     ssh root@saegl.me 'chmod 600 /etc/beszel/hub.env /etc/beszel/hub.key && (systemctl restart beszel-hub || true)'
 
 # Connect with ssh
@@ -56,16 +44,8 @@ space:
 # Where the frostmourne NixOS config lives, as seen from this repo.
 frostmourne := "../nixos"
 
-# Resolves the input through the lock's root node rather than reading
-# `.nodes.nixpkgs` directly: once a flake has inputs of its own (frostmourne has
-# noctalia and helium), the nixpkgs the config actually uses gets a suffixed
-# name like `nixpkgs_2`, while the bare `nixpkgs` node is some dependency's own
-# copy - 8 months stale, in frostmourne's case.
-#
-# Only `locked` is touched; `original` stays `nixos-unstable`, so `just up` goes
-# on following the channel.
-#
-# Match nixpkgs to frostmourne's so a deploy builds from this machine's store
+# Match nixpkgs to frostmourne's so a deploy builds from this machine's store.
+# Only `locked` changes, so `just up` still follows the channel.
 sync-frostmourne:
     #!/usr/bin/env python3
     import json, pathlib, sys
@@ -73,6 +53,7 @@ sync-frostmourne:
     def nixpkgs_node(path):
         lock = json.loads(path.read_text())
         nodes = lock["nodes"]
+        # Via the root node: the bare `nixpkgs` node may be a dependency's copy.
         name = nodes[lock["root"]]["inputs"]["nixpkgs"]
         # An input can be re-exported as ["parent", "input"] rather than a name.
         if not isinstance(name, str):

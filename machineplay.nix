@@ -1,23 +1,10 @@
-# All machineplay-related configuration: backend + runner services, nginx
-# virtual hosts, packages and the per-component deploy scripts.
-#
-# The three components now live in independent repos, each cloned at /root on
-# the VPS and deployed individually from its own Justfile (`just deploy`):
-#   /root/backend     <- github.com/MachinePlay/backend     (FastAPI app)
-#   /root/frontend    <- github.com/MachinePlay/frontend    (Vite static site)
-#   /root/machineplay <- github.com/MachinePlay/machineplay (CLI / runner)
-#
-# Backend environment variables (secrets) are NOT stored in the nix store.
-# They live in /etc/machineplay/backend.env on the VPS and are pushed there
-# out-of-band with `just push-secrets` (see ./secrets and the Justfile).
+# MachinePlay: registry, backend and runner services, nginx vhosts and deploy
+# scripts. The repos are cloned at /root/{backend,frontend,machineplay}; secrets
+# live in /etc/machineplay, pushed by `just push-secrets`.
 {pkgs, ...}: let
-  # Public cert matching the registry-auth RSA private key that is pushed to
-  # /etc/machineplay/registry-auth.key (see the Justfile `push-secrets` target).
-  # The backend signs Docker registry tokens with the private key; the registry
-  # validates them against this cert (its `auth.token.rootcertbundle`). It lives
-  # in the nix store because the docker-registry user can't read the 0700
-  # /etc/machineplay dir, and because flakes ignore untracked (gitignored)
-  # files. Safe to commit — it is public. Regenerate both together when rotating:
+  # Public half of /etc/machineplay/registry-auth.key, which signs registry
+  # tokens. In the store because the registry user can't read /etc/machineplay.
+  # Rotate both together:
   #   openssl req -newkey rsa:2048 -nodes -keyout registry-auth.key \
   #     -x509 -days 3650 -out registry-auth.crt -subj "/CN=machineplay-registry-auth"
   registryAuthCert = pkgs.writeText "registry-auth.crt" ''
@@ -42,28 +29,15 @@
     -----END CERTIFICATE-----
   '';
 in {
-  ##############################################################################
-  # SERVICES
-  ##############################################################################
-
-  # Docker registry engines are pushed to. It listens only on localhost; nginx
-  # (registry.machineplay.org) terminates TLS in front of it. Pulls are public;
-  # pushes require a token minted by the backend's /registry/token endpoint,
-  # which the registry validates against registryAuthCert. The runner can pull
-  # straight from 127.0.0.1:5000 (docker treats localhost as insecure-ok), so it
-  # needs no credentials.
+  # Pulls are public; pushes need a token from the backend's /registry/token.
+  # The local runner pulls from 127.0.0.1:5000, which docker allows over HTTP.
   services.dockerRegistry = {
     enable = true;
     listenAddress = "127.0.0.1";
     port = 5000;
-    # Allow `DELETE`s: the backend removes an engine's manifests when the
-    # engine is deleted (DELETE /user/{login}/{engine}).
+    # The backend deletes the manifests of deleted engines.
     enableDelete = true;
-    # Manifest deletes only unlink; blobs are shared, content-addressed, and
-    # reclaimed by this timer (`registry garbage-collect` + registry restart,
-    # weekly = Mon 00:00). GC runs against the live registry, so in theory a
-    # push racing it could lose a just-uploaded blob — fine at our scale, and
-    # a re-push heals it.
+    # Reclaims unlinked blobs. A push racing it could lose a blob; re-push.
     enableGarbageCollect = true;
     garbageCollectDates = "weekly";
     extraConfig.auth.token = {
@@ -79,15 +53,11 @@ in {
     after = ["network.target"];
     wantedBy = ["multi-user.target"];
     environment = {
-      # Co-located with the registry: the backend deletes engine image
-      # manifests straight over localhost (auth still applies; it mints its
-      # own delete-scoped token).
       REGISTRY_API_URL = "http://127.0.0.1:5000";
     };
     serviceConfig = {
       WorkingDirectory = "/root/backend";
-      # Leading "-" makes the file optional: the service still starts before
-      # any secrets have been pushed. Push them with `just push-secrets`.
+      # "-": starts before the secrets are pushed.
       EnvironmentFile = "-/etc/machineplay/backend.env";
       ExecStart = "${pkgs.uv}/bin/uv run uvicorn app.main:app --port 8888 --timeout-graceful-shutdown 0";
       Restart = "always";
@@ -100,35 +70,23 @@ in {
     after = ["network.target" "machineplay.service"];
     wants = ["machineplay.service"];
     wantedBy = ["multi-user.target"];
-    # docker: the runner pulls engine images and plays them via `docker run`.
     path = [pkgs.fastchess pkgs.docker];
     environment = {
       BACKEND_URL = "ws://127.0.0.1:8888/ws";
-      # Co-located with the registry: pull straight from it, skipping nginx/TLS.
       MACHINEPLAY_REGISTRY = "127.0.0.1:5000";
-      # The runner logs via print(); without this, stdout is block-buffered
-      # under systemd and nothing reaches the journal.
+      # The runner logs via print(), block-buffered under systemd otherwise.
       PYTHONUNBUFFERED = "1";
     };
     serviceConfig = {
       WorkingDirectory = "/root/machineplay";
-      # The runner authenticates to the backend WS with an mp_ token and keeps a
-      # stable identity across restarts. Both come from this secrets file
-      # (pushed out-of-band by `just push-secrets`, see ./secrets/runner.env):
-      #   MP_TOKEN=mp_…          # owner's API token; sets the runner's owner
-      #   RUNNER_ID=<uuid>       # pins the runner's durable id declaratively
-      # Leading "-" keeps the unit startable before the secret is pushed; without
-      # a token the runner exits(1) and systemd retries until it lands.
+      # MP_TOKEN (the owner's token) and RUNNER_ID. Until it is pushed the
+      # runner exits and systemd retries.
       EnvironmentFile = "-/etc/machineplay/runner.env";
       ExecStart = "${pkgs.uv}/bin/uv run machineplay runner";
       Restart = "always";
       RestartSec = 5;
     };
   };
-
-  ##############################################################################
-  # NGINX VIRTUAL HOSTS (merged with services.nginx in configuration.nix)
-  ##############################################################################
 
   services.nginx.virtualHosts."api.machineplay.org" = {
     enableACME = true;
@@ -139,10 +97,8 @@ in {
     };
   };
 
-  # Public TLS front for the docker registry. Image blobs are large and
-  # streamed, so disable the body-size cap and request buffering. The registry
-  # builds blob-upload Location URLs from the forwarded Host/proto, so pass them
-  # through. DNS: add an A/AAAA record for registry.machineplay.org → this VPS.
+  # Blobs are large and streamed: no body cap or buffering. The registry builds
+  # upload URLs from the forwarded Host/proto.
   services.nginx.virtualHosts."registry.machineplay.org" = {
     enableACME = true;
     forceSSL = true;
@@ -166,18 +122,18 @@ in {
   services.nginx.virtualHosts."machineplay.org" = {
     enableACME = true;
     forceSSL = true;
-    root = "/var/www/machineplay/dist"; # see permissions note below
+    root = "/var/www/machineplay/dist";
     locations."/" = {
       tryFiles = "$uri /index.html";
     };
-    # Vite hashes filenames (index-Drtt7cGr.js), so assets/ can cache forever
+    # Vite hashes asset filenames.
     locations."/assets/" = {
       extraConfig = ''
         expires 1y;
         add_header Cache-Control "public, immutable";
       '';
     };
-    # index.html must NOT be cached, otherwise users get stale shells after deploys
+    # Otherwise users get a stale shell after a deploy.
     locations."= /index.html" = {
       extraConfig = ''
         add_header Cache-Control "no-cache";
@@ -185,25 +141,17 @@ in {
     };
   };
 
-  ##############################################################################
-  # PACKAGES & DEPLOY SCRIPTS
-  ##############################################################################
-
-  # One script per component. Each repo's Justfile sshes in and runs the
-  # matching one (`just deploy`); it git-pulls the already-cloned repo and
-  # rebuilds/restarts only that component. `deploy-machineplay` does all three.
+  # Each repo's `just deploy` runs its script here.
   environment.systemPackages = with pkgs; [
     fastchess
 
     (writeShellScriptBin "deploy-machineplay-backend" ''
       set -e
-      # The backend editable-installs ../machineplay (shared schemas), so the
-      # two checkouts must move together — a stale sibling breaks /game.
+      # The backend editable-installs ../machineplay; they move together.
       cd /root/machineplay
       git pull
       cd /root/backend
       git pull
-      # `uv run` (the service's ExecStart) syncs deps from the lockfile on start.
       systemctl restart machineplay
       echo "Backend deployed successfully"
     '')
@@ -223,10 +171,8 @@ in {
       set -e
       cd /root/machineplay
       git pull
-      # The runner auto-reconnects, so it's safe to restart independently.
       systemctl restart machineplay-runner
-      # The backend imports machineplay.schemas (editable install), so it must
-      # reload too or the two sides disagree on the wire schema.
+      # The backend imports machineplay.schemas, so it reloads too.
       systemctl restart machineplay
       echo "Runner (cli) deployed successfully"
     '')
