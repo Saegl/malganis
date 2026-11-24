@@ -85,7 +85,7 @@
   # Uncapped, the journal had grown to 2.2G - a tenth of this 23G disk - and
   # journald's own RSS along with it. 200M keeps enough history to debug a bad
   # deploy without the file set being a top-five consumer.
-  services.journald.extraConfig = "SystemMaxUse=200M";
+  services.journald.settings.Journal.SystemMaxUse = "200M";
 
   services.nginx = {
     enable = true;
